@@ -1,0 +1,14 @@
+{
+  "kitchen": {
+    "name": "Volet cuisine",
+    "pos": 0
+  },
+  "bedroom": {
+    "name": "Volet chambre",
+    "pos": 0
+  },
+  "guestroom": {
+    "name": "Volet chambre amis",
+    "pos": 0
+  }
+}
