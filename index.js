@@ -1,20 +1,21 @@
-const { Connection, Products, Gateway } = require('klf-200-api');
-const express = require('express');
-const fs = require('fs/promises');
-const winston = require('winston');
+import { Connection, Products, Gateway } from 'klf-200-api';
+import express from 'express';
+import { readFile, writeFile } from 'fs/promises';
+import { createLogger, format as _format, transports as _transports } from 'winston';
+import debounce from 'debounce';
 
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.json(),
-  defaultMeta: { service: 'user-service' },
-  transports: [
-    //
-    // - Write all logs with importance level of `error` or less to `error.log`
-    // - Write all logs with importance level of `info` or less to `combined.log`
-    //
-    new winston.transports.File({ filename: 'error.log', level: 'error' }),
-    new winston.transports.File({ filename: 'combined.log' }),
-  ],
+const logger = createLogger({
+	level: 'info',
+	format: _format.json(),
+	defaultMeta: { service: 'user-service' },
+	transports: [
+		//
+		// - Write all logs with importance level of `error` or less to `error.log`
+		// - Write all logs with importance level of `info` or less to `combined.log`
+		//
+		new _transports.File({ filename: 'error.log', level: 'error' }),
+		new _transports.File({ filename: 'combined.log' }),
+	],
 });
 
 // This is to catch stuff and not exit if there's an error, like a lost connection.
@@ -35,6 +36,7 @@ const port = 5000;
 const posFile = 'positions.json';
 
 let blinds;
+const bounces = [];
 
 app.listen(port, () => {
 	console.log(`KLF listening on port ${port}.`);
@@ -49,9 +51,9 @@ function getPositionFromPercentage(num) {
 
 app.get('/:room/pos', async (req, res) => {
 	try {
-		const ret = await klf('getPos', req.params.room)
+		const ret = await bounces[req.params.room]('getPos', req.params.room);
 		res.status(200).send(`${ret}`);
-	} catch(err) {
+	} catch (err) {
 		logger.error(err);
 		res.status(500).send();
 	}
@@ -59,24 +61,35 @@ app.get('/:room/pos', async (req, res) => {
 
 app.put('/:room/pos/:pos', async (req, res) => {
 	try {
-		await klf('setPos', req.params.room, req.params.pos);
+		await bounces[req.params.room]('setPos', req.params.room, req.params.pos);
 		res.status(200).send();
-	} catch(err) {
+	} catch (err) {
 		logger.error(err);
 		res.status(500).send();
 	}
 });
 
 async function main() {
-	const data = await fs.readFile(posFile, 'utf-8');
+	const data = await readFile(posFile, 'utf-8');
 	blinds = JSON.parse(data);
-	await connect();
+
+	for (const blind in blinds) {
+		bounces[blind] = debounce(klf, 1500);
+	}
+
+	try {
+		await connect();
+	} catch (err) {
+		console.error(err);
+		return;
+	}
+
 	console.log('[KLF] Logged in');
 	// Keeping connection alive.
 	setInterval(async () => {
 		try {
 			await refresh();
-		} catch(err) {
+		} catch (err) {
 			logger.error(err);
 			// Likely disconnection, restart connection
 			await connect();
@@ -89,9 +102,13 @@ let c;
 
 async function connect() {
 	try {
-		c = new Connection('xxx');
-		await c.loginAsync('yyy');
-	} catch(err) {
+		console.log('Creating new connection');
+		if (!process.env.KLF_IP || !process.env.KLF_PWD) {
+			throw new Error('You must define KLF_IP and KLP_PWD environment variables');
+		}
+		c = new Connection(process.env.KLF_IP);
+		await c.loginAsync(process.env.KLF_PWD);
+	} catch (err) {
 		logger.error(err);
 		throw err;
 	}
@@ -108,8 +125,8 @@ async function refresh() {
 			//console.log(blinds[room].name, p.CurrentPosition, p.TargetPosition, p.CurrentPositionRaw, p.TargetPositionRaw);
 			blinds[room].pos = p.CurrentPosition;
 		}
-		fs.writeFile(posFile, JSON.stringify(blinds, null, 2), 'utf-8');
-	} catch(err) {
+		writeFile(posFile, JSON.stringify(blinds, null, 2), 'utf-8');
+	} catch (err) {
 		logger.error(err);
 		throw err;
 	}
@@ -126,7 +143,7 @@ async function klf(command, room, option) {
 			await blind.setTargetPositionAsync(getPositionFromPercentage(option));
 			blinds[room].pos = option;
 		};
-	} catch(err) {
+	} catch (err) {
 		logger.error(err);
 		throw err;
 	}

@@ -3,6 +3,7 @@
 	"version": "1.0.0",
 	"description": "",
 	"main": "index.js",
+	"type": "module",
 	"scripts": {
 		"test": "echo \"Error: no test specified\" && exit 1"
 	},
@@ -10,8 +11,9 @@
 	"author": "",
 	"license": "ISC",
 	"dependencies": {
-		"express": "^4.17.1",
-		"klf-200-api": "^3.1.1",
-		"winston": "^3.3.3"
+		"debounce": "^2.2.0",
+		"express": "^5.1.0",
+		"klf-200-api": "^6.0.0",
+		"winston": "^3.17.0"
 	}
 }
